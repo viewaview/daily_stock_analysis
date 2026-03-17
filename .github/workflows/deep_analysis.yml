@@ -1,9 +1,9 @@
-name: 每日股票分析
+name: 股票深度分析
 
 on:
-  # 定时触发 - 每天北京时间 5:00 (UTC 21:00)
+  # 定时触发 - 每天北京时间 18:00 (UTC 10:00)
   schedule:
-    - cron: '0 21 * * 1-5'     # 周一到周五，UTC 21:00 = 北京时间 5:00
+    - cron: '0 10 * * 1-5'     # 周一到周五，UTC 10:00 = 北京时间 18:00
   
   # 手动触发
   workflow_dispatch:
@@ -65,11 +65,11 @@ jobs:
           LITELLM_CONFIG: ${{ vars.LITELLM_CONFIG || secrets.LITELLM_CONFIG }}
           LITELLM_CONFIG_YAML: ${{ vars.LITELLM_CONFIG_YAML || secrets.LITELLM_CONFIG_YAML }}
           LITELLM_API_KEY: ${{ secrets.LITELLM_API_KEY }}
-          LITELLM_MODEL: ${{ vars.LITELLM_MODEL || secrets.LITELLM_MODEL }}
+          LITELLM_MODEL: ${{ vars.LITELLM_MODEL_DEEP || secrets.LITELLM_MODEL_DEEP }}
 
           # Gemini AI（主选）
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || secrets.GEMINI_MODEL || 'gemini-3-flash-preview' }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL_DEEP || secrets.GEMINI_MODEL_DEEP || 'gemini-3-flash-preview' }}
           GEMINI_MODEL_FALLBACK: ${{ vars.GEMINI_MODEL_FALLBACK || secrets.GEMINI_MODEL_FALLBACK || 'gemini-2.5-flash' }}
           GEMINI_REQUEST_DELAY: '3.0'
           
@@ -95,7 +95,7 @@ jobs:
           # ==========================================
           BOCHA_API_KEYS: ${{ secrets.BOCHA_API_KEYS }}
           TAVILY_API_KEYS: ${{ secrets.TAVILY_API_KEYS }}
-          SERPAPI_API_KEYS: ${{ secrets.SERPAPI_API_KEYS }}
+          SERPAPI_API_KEYS: ${{ secrets.SERPAPI_API_KEYS_DEEP }}
           MINIMAX_API_KEYS: ${{ secrets.MINIMAX_API_KEYS }}
           BRAVE_API_KEYS: ${{ secrets.BRAVE_API_KEYS }}
           SEARXNG_BASE_URLS: ${{ secrets.SEARXNG_BASE_URLS }}
@@ -119,8 +119,8 @@ jobs:
           # 方式四：邮件
           EMAIL_SENDER: ${{ vars.EMAIL_SENDER || secrets.EMAIL_SENDER }}
           EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
-          EMAIL_RECEIVERS: ${{ vars.EMAIL_RECEIVERS || secrets.EMAIL_RECEIVERS }}
-          EMAIL_SENDER_NAME: ${{ vars.EMAIL_SENDER_NAME || secrets.EMAIL_SENDER_NAME || 'daily_stock_analysis股票分析助手' }}
+          EMAIL_RECEIVERS: ${{ vars.EMAIL_RECEIVERS_DEEP || secrets.EMAIL_RECEIVERS_DEEP }}
+          EMAIL_SENDER_NAME: ${{ vars.EMAIL_SENDER_NAME_DEEP || secrets.EMAIL_SENDER_NAME_DEEP || 'deep_stock_research' }}
           
           # 方式五：Pushover
           PUSHOVER_USER_KEY: ${{ secrets.PUSHOVER_USER_KEY }}
@@ -153,7 +153,7 @@ jobs:
           # ==========================================
           # 自选股配置
           # ==========================================
-          STOCK_LIST: ${{ vars.STOCK_LIST || secrets.STOCK_LIST || '600519' }}
+          STOCK_LIST: ${{ vars.STOCK_LIST_DEEP || secrets.STOCK_LIST_DEEP || '600519' }}
           MARKET_REVIEW_REGION: ${{ vars.MARKET_REVIEW_REGION || secrets.MARKET_REVIEW_REGION || 'cn' }}
           
           # ==========================================
@@ -176,16 +176,7 @@ jobs:
           # 可选值: tencent, akshare_sina, efinance, akshare_em, tushare
           # 如果有 Tushare Pro 高积分账号，可将 tushare 放在首位
           REALTIME_SOURCE_PRIORITY: ${{ vars.REALTIME_SOURCE_PRIORITY || 'tencent,akshare_sina,efinance,akshare_em' }}
-
-          # ==========================================
-          # 分组推送配置
-          # ==========================================
-          STOCK_GROUP_1: ${{ vars.STOCK_GROUP_1 || secrets.STOCK_GROUP_1 }}
-          EMAIL_GROUP_1: ${{ vars.EMAIL_GROUP_1 || secrets.EMAIL_GROUP_1 }}
-          STOCK_GROUP_2: ${{ vars.STOCK_GROUP_2 || secrets.STOCK_GROUP_2 }}
-          EMAIL_GROUP_2: ${{ vars.EMAIL_GROUP_2 || secrets.EMAIL_GROUP_2 }}
-          STOCK_GROUP_3: ${{ vars.STOCK_GROUP_3 || secrets.STOCK_GROUP_3 }}
-          EMAIL_GROUP_3: ${{ vars.EMAIL_GROUP_3 || secrets.EMAIL_GROUP_3 }}
+      
           
         run: |
           # 处理 LITELLM YAML 配置文件
