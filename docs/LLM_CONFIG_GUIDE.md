@@ -81,6 +81,8 @@ LLM_AIHUBMIX_MODELS=gpt-4o-mini,claude-3-5-sonnet
 # 4. 【关键】指定主模型和备用模型列表
 # 平时首选用 deepseek 这款模型：
 LITELLM_MODEL=deepseek/deepseek-chat
+# 可选：Agent 问股单独指定主模型（留空则继承 LITELLM_MODEL）
+AGENT_LITELLM_MODEL=deepseek/deepseek-reasoner
 # 主模型崩了立刻挨个尝试下面这俩备用模型：
 LITELLM_FALLBACK_MODELS=openai/gpt-4o-mini,anthropic/claude-3-5-sonnet
 ```

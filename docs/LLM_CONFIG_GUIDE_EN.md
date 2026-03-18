@@ -81,6 +81,8 @@ LLM_AIHUBMIX_MODELS=gpt-4o-mini,claude-3-5-sonnet
 # 4. [Key Step] Specify the primary model and fallback list
 # Set your primary model:
 LITELLM_MODEL=deepseek/deepseek-chat
+# Optional: set an Agent-only primary model (empty = inherit LITELLM_MODEL)
+AGENT_LITELLM_MODEL=deepseek/deepseek-reasoner
 # If the primary model crashes, try these fallbacks sequentially:
 LITELLM_FALLBACK_MODELS=openai/gpt-4o-mini,anthropic/claude-3-5-sonnet
 ```
