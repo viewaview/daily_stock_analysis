@@ -18,6 +18,12 @@ FastAPI 应用工厂模块
 import mimetypes
 import os
 from contextlib import asynccontextmanager
+
+# Fix: Windows registry may map .js to text/plain, causing browsers to reject module scripts
+mimetypes.add_type("application/javascript", ".js")
+mimetypes.add_type("application/javascript", ".mjs")
+mimetypes.add_type("text/css", ".css")
+mimetypes.add_type("image/svg+xml", ".svg")
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -106,7 +112,18 @@ def create_app(static_dir: Optional[Path] = None) -> FastAPI:
     )
 
     add_auth_middleware(app)
-    
+
+    # Fix: Windows registry may serve .js as text/plain; enforce correct MIME at middleware level
+    @app.middleware("http")
+    async def fix_mime_types(request: Request, call_next):
+        response = await call_next(request)
+        path = request.url.path
+        if path.endswith(".js") or path.endswith(".mjs"):
+            response.headers["content-type"] = "application/javascript; charset=utf-8"
+        elif path.endswith(".css"):
+            response.headers["content-type"] = "text/css; charset=utf-8"
+        return response
+
     # ============================================================
     # 注册路由
     # ============================================================
@@ -177,10 +194,33 @@ def create_app(static_dir: Optional[Path] = None) -> FastAPI:
     # ============================================================
     
     if has_frontend:
-        # 挂载静态资源目录
+        # 静态资源目录（用路由代替 StaticFiles 挂载，以确保 Windows 下 MIME 类型正确）
         assets_dir = static_dir / "assets"
+        _MIME_MAP = {
+            ".js": "application/javascript",
+            ".mjs": "application/javascript",
+            ".css": "text/css",
+            ".svg": "image/svg+xml",
+            ".png": "image/png",
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".ico": "image/x-icon",
+            ".woff": "font/woff",
+            ".woff2": "font/woff2",
+            ".ttf": "font/ttf",
+            ".json": "application/json",
+            ".wasm": "application/wasm",
+        }
+
         if assets_dir.exists():
-            app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+            @app.get("/assets/{asset_path:path}", include_in_schema=False)
+            async def serve_assets(asset_path: str):
+                file_path = assets_dir / asset_path
+                if not file_path.exists() or not file_path.is_file():
+                    return JSONResponse(status_code=404, content={"error": "not_found"})
+                _, ext = os.path.splitext(asset_path)
+                media_type = _MIME_MAP.get(ext.lower(), "application/octet-stream")
+                return FileResponse(str(file_path), media_type=media_type)
         
         # SPA 路由回退
         @app.get("/{full_path:path}", include_in_schema=False)
