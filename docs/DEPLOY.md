@@ -438,6 +438,7 @@ git push
 - Actions 页面可以看到运行历史
 - 点击具体的运行记录查看详细日志
 - 分析报告会作为 Artifact 保存 30 天
+- 云端数据库快照会作为 `analysis-db` Artifact 保存 30 天（用于本地历史同步）
 
 ### 定时说明
 
@@ -474,8 +475,21 @@ git push
 **Q: 为什么定时任务没有执行？**
 A: GitHub Actions 定时任务可能有 5-15 分钟延迟，且仅在仓库有活动时才触发。长时间无 commit 可能导致 workflow 被禁用。
 
-**Q: 如何查看历史报告？**
-A: Actions → 选择运行记录 → Artifacts → 下载 `analysis-reports-xxx`
+**Q: 如何查看历史报告和数据库快照？**
+A: Actions → 选择运行记录 → Artifacts → 下载 `analysis-reports-xxx`（报告）和 `analysis-db`（数据库快照）
+
+**Q: 如何让本地 WebUI 自动看到云端历史？**
+A:
+1. 本地安装 GitHub CLI：`gh`
+2. 执行一次登录：`gh auth login`
+3. 启动 `python main.py` 或 `python webui.py`
+4. 启动前会自动尝试下载并合并 `daily_analysis.yml` / `deep_analysis.yml` 的 `analysis-db` Artifact
+
+可选配置（见 `.env.example`）：
+- `CLOUD_HISTORY_SYNC_ENABLED=true`
+- `CLOUD_HISTORY_SYNC_REPO=owner/repo`（自动识别失败时再填写）
+- `CLOUD_HISTORY_SYNC_WORKFLOWS=daily_analysis.yml,deep_analysis.yml`
+- `CLOUD_HISTORY_SYNC_ARTIFACT_NAME=analysis-db`
 
 **Q: 免费额度够用吗？**
 A: 每次运行约 2-5 分钟，一个月 22 个工作日 = 44-110 分钟，远低于 2000 分钟限制。

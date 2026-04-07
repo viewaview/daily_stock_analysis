@@ -301,6 +301,16 @@ jobs:
             logs/
           retention-days: 30
       
+      - name: Upload analysis db snapshot
+        uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: analysis-db
+          path: |
+            data/stock_analysis.db*
+          if-no-files-found: ignore
+          retention-days: 30
+      
       - name: 显示运行结果
         if: always()
         run: |

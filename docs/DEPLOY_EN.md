@@ -394,6 +394,7 @@ git push
 - Actions page shows run history
 - Click specific run record to view detailed logs
 - Analysis reports are saved as Artifacts for 30 days
+- Cloud database snapshots are saved as `analysis-db` Artifact for 30 days (for local history sync)
 
 ### Schedule Details
 
@@ -430,8 +431,21 @@ git push
 **Q: Why isn't the scheduled task running?**
 A: GitHub Actions scheduled tasks may have 5-15 minute delays, and only trigger when repo has activity. Long periods without commits may cause workflow to be disabled.
 
-**Q: How to view historical reports?**
-A: Actions → Select run record → Artifacts → Download `analysis-reports-xxx`
+**Q: How to view historical reports and DB snapshots?**
+A: Actions -> Select run record -> Artifacts -> Download `analysis-reports-xxx` (reports) and `analysis-db` (database snapshot)
+
+**Q: How to make local WebUI automatically show cloud history?**
+A:
+1. Install GitHub CLI: `gh`
+2. Authenticate once: `gh auth login`
+3. Start `python main.py` or `python webui.py`
+4. Before startup, the app will try to download and merge `analysis-db` artifacts from `daily_analysis.yml` / `deep_analysis.yml`
+
+Optional settings (see `.env.example`):
+- `CLOUD_HISTORY_SYNC_ENABLED=true`
+- `CLOUD_HISTORY_SYNC_REPO=owner/repo` (set only when auto-detect fails)
+- `CLOUD_HISTORY_SYNC_WORKFLOWS=daily_analysis.yml,deep_analysis.yml`
+- `CLOUD_HISTORY_SYNC_ARTIFACT_NAME=analysis-db`
 
 **Q: Is the free quota enough?**
 A: Each run takes about 2-5 minutes, 22 workdays per month = 44-110 minutes, well below the 2000 minute limit.

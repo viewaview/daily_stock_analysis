@@ -703,6 +703,35 @@ def _build_schedule_time_provider(default_schedule_time: str):
     return _provider
 
 
+def _sync_cloud_history_at_startup(config: Config) -> None:
+    """Try pulling cloud history artifacts before local run starts."""
+    try:
+        from src.services.cloud_history_sync_service import sync_cloud_history_from_github_actions
+
+        result = sync_cloud_history_from_github_actions(local_db_path=config.database_path)
+    except Exception as exc:  # pragma: no cover - defensive path
+        logger.warning("[CloudSync] startup sync failed: %s", exc)
+        return
+
+    status = result.get("status")
+    if status != "ok":
+        reason = result.get("reason", "unknown")
+        logger.info("[CloudSync] skipped: %s", reason)
+        return
+
+    processed_runs = int(result.get("processed_runs", 0) or 0)
+    merged_rows = int(result.get("merged_rows", 0) or 0)
+    rows_by_table = result.get("rows_by_table", {}) or {}
+    logger.info(
+        "[CloudSync] done: processed_runs=%s merged_rows=%s (analysis_history=%s, news_intel=%s, fundamental_snapshot=%s)",
+        processed_runs,
+        merged_rows,
+        rows_by_table.get("analysis_history", 0),
+        rows_by_table.get("news_intel", 0),
+        rows_by_table.get("fundamental_snapshot", 0),
+    )
+
+
 def main() -> int:
     """
     主入口函数
@@ -744,6 +773,9 @@ def main() -> int:
     logger.info("=" * 60)
 
     # 验证配置
+    # Pull cloud-generated history into local DB before serving/analyzing.
+    _sync_cloud_history_at_startup(config)
+
     warnings = config.validate()
     for warning in warnings:
         logger.warning(warning)

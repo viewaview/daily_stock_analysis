@@ -37,11 +37,25 @@ def main() -> int:
 
     try:
         import uvicorn
-        from src.config import setup_env
+        from src.config import get_config, setup_env
+        from src.services.cloud_history_sync_service import sync_cloud_history_from_github_actions
         from src.logging_config import setup_logging
 
         setup_env()
         setup_logging(log_prefix="web_server")
+        try:
+            config = get_config()
+            result = sync_cloud_history_from_github_actions(local_db_path=config.database_path)
+            if result.get("status") != "ok":
+                logger.info("[CloudSync] skipped: %s", result.get("reason", "unknown"))
+            else:
+                logger.info(
+                    "[CloudSync] done: processed_runs=%s merged_rows=%s",
+                    result.get("processed_runs", 0),
+                    result.get("merged_rows", 0),
+                )
+        except Exception as sync_exc:
+            logger.warning("[CloudSync] startup sync failed: %s", sync_exc)
 
         uvicorn.run(
             "api.app:app",
