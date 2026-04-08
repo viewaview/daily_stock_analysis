@@ -48,6 +48,7 @@ env/
 
 # 数据和日志
 /data/
+/prompts/
 logs/
 reports/
 *.db

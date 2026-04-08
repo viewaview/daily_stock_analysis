@@ -722,14 +722,25 @@ def _sync_cloud_history_at_startup(config: Config) -> None:
     processed_runs = int(result.get("processed_runs", 0) or 0)
     merged_rows = int(result.get("merged_rows", 0) or 0)
     rows_by_table = result.get("rows_by_table", {}) or {}
+    synced_codes = result.get("synced_codes", []) or []
     logger.info(
-        "[CloudSync] done: processed_runs=%s merged_rows=%s (analysis_history=%s, news_intel=%s, fundamental_snapshot=%s)",
+        "[CloudSync] done: processed_runs=%s merged_rows=%s (analysis_history=%s, news_intel=%s, fundamental_snapshot=%s) codes=%s",
         processed_runs,
         merged_rows,
         rows_by_table.get("analysis_history", 0),
         rows_by_table.get("news_intel", 0),
         rows_by_table.get("fundamental_snapshot", 0),
+        _format_synced_codes_for_log(synced_codes),
     )
+
+
+def _format_synced_codes_for_log(codes: List[str], limit: int = 30) -> str:
+    normalized = sorted({str(code).strip() for code in codes if str(code).strip()})
+    if not normalized:
+        return "-"
+    if len(normalized) <= limit:
+        return ",".join(normalized)
+    return f"{','.join(normalized[:limit])} ... (+{len(normalized) - limit} more)"
 
 
 def main() -> int:

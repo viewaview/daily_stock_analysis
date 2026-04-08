@@ -23,6 +23,15 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def _format_synced_codes_for_log(codes: list[str], limit: int = 30) -> str:
+    normalized = sorted({str(code).strip() for code in codes if str(code).strip()})
+    if not normalized:
+        return "-"
+    if len(normalized) <= limit:
+        return ",".join(normalized)
+    return f"{','.join(normalized[:limit])} ... (+{len(normalized) - limit} more)"
+
+
 def main() -> int:
     """
     启动 Web 服务
@@ -50,9 +59,10 @@ def main() -> int:
                 logger.info("[CloudSync] skipped: %s", result.get("reason", "unknown"))
             else:
                 logger.info(
-                    "[CloudSync] done: processed_runs=%s merged_rows=%s",
+                    "[CloudSync] done: processed_runs=%s merged_rows=%s codes=%s",
                     result.get("processed_runs", 0),
                     result.get("merged_rows", 0),
+                    _format_synced_codes_for_log(result.get("synced_codes", []) or []),
                 )
         except Exception as sync_exc:
             logger.warning("[CloudSync] startup sync failed: %s", sync_exc)
