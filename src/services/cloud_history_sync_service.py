@@ -83,6 +83,14 @@ def sync_cloud_history_from_github_actions(local_db_path: Optional[str] = None) 
         os.getenv("CLOUD_HISTORY_SYNC_STATE_FILE", str(destination_db.parent / STATE_FILE_NAME))
     ).resolve()
 
+    if destination_db.exists():
+        removed_duplicates = _dedupe_local_analysis_history_by_code(destination_db)
+        if removed_duplicates:
+            logger.info(
+                "[CloudSync] local dedupe: analysis_history removed_duplicates=%s",
+                removed_duplicates,
+            )
+
     state = _load_sync_state(state_file)
     handled_run_ids = state["processed_run_ids"] | state["skipped_run_ids"]
 
@@ -282,6 +290,7 @@ def _merge_remote_db_into_local(remote_db_path: Path, local_db_path: Path) -> Tu
 
     if not local_db_path.exists():
         shutil.copy2(remote_db_path, local_db_path)
+        _dedupe_local_analysis_history_by_code(local_db_path)
         return _count_rows(local_db_path, SYNC_TABLES), _collect_codes_from_db(local_db_path, SYNC_TABLES)
 
     connection = sqlite3.connect(str(local_db_path))
@@ -289,6 +298,8 @@ def _merge_remote_db_into_local(remote_db_path: Path, local_db_path: Path) -> Tu
         connection.execute("PRAGMA busy_timeout = 5000")
         connection.execute("ATTACH DATABASE ? AS remote", (str(remote_db_path),))
         for table_name in SYNC_TABLES:
+            if table_name == "analysis_history":
+                _dedupe_table_keep_latest_by_code(connection, table_name)
             merged_count, codes = _merge_table(connection, table_name)
             rows_by_table[table_name] = merged_count
             merged_codes.update(codes)
@@ -301,6 +312,67 @@ def _merge_remote_db_into_local(remote_db_path: Path, local_db_path: Path) -> Tu
     finally:
         connection.close()
     return rows_by_table, merged_codes
+
+
+def _normalized_code_expr(alias: str) -> str:
+    return f"UPPER(TRIM(COALESCE({alias}.\"code\", '')))"
+
+
+def _dedupe_local_analysis_history_by_code(db_path: Path) -> int:
+    if not db_path.exists():
+        return 0
+
+    connection = sqlite3.connect(str(db_path))
+    try:
+        connection.execute("PRAGMA busy_timeout = 5000")
+        removed = _dedupe_table_keep_latest_by_code(connection, "analysis_history")
+        connection.commit()
+        return removed
+    except sqlite3.Error as exc:
+        logger.warning("[CloudSync] local dedupe failed: %s", exc)
+        return 0
+    finally:
+        connection.close()
+
+
+def _dedupe_table_keep_latest_by_code(connection: sqlite3.Connection, table_name: str) -> int:
+    if not _table_exists(connection, "main", table_name):
+        return 0
+
+    columns = _table_columns(connection, "main", table_name)
+    if "id" not in columns or "code" not in columns or "created_at" not in columns:
+        return 0
+
+    quoted_table = _quote_identifier(table_name)
+    connection.execute(
+        f"""
+        UPDATE main.{quoted_table}
+        SET "code" = UPPER(TRIM("code"))
+        WHERE "code" IS NOT NULL
+          AND TRIM("code") != ''
+          AND "code" != UPPER(TRIM("code"))
+        """
+    )
+    connection.execute(
+        f"""
+        DELETE FROM main.{quoted_table}
+        WHERE id IN (
+            SELECT id
+            FROM (
+                SELECT
+                    id,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY UPPER(TRIM(COALESCE(code, '')))
+                        ORDER BY COALESCE(created_at, '') DESC, id DESC
+                    ) AS rn
+                FROM main.{quoted_table}
+                WHERE TRIM(COALESCE(code, '')) != ''
+            ) AS ranked
+            WHERE ranked.rn > 1
+        )
+        """
+    )
+    return int(connection.execute("SELECT changes()").fetchone()[0] or 0)
 
 
 def _merge_table(connection: sqlite3.Connection, table_name: str) -> Tuple[int, Set[str]]:
@@ -320,26 +392,55 @@ def _merge_table(connection: sqlite3.Connection, table_name: str) -> Tuple[int, 
     quoted_columns = ", ".join(_quote_identifier(col) for col in shared_columns)
 
     if table_name == "analysis_history":
+        remote_projection = ", ".join(f'r.{_quote_identifier(col)}' for col in shared_columns)
+        remote_ranked_cte = f"""
+            WITH remote_ranked AS (
+                SELECT
+                    {remote_projection},
+                    {_normalized_code_expr("r")} AS norm_code,
+                    COALESCE(r."created_at", '') AS created_key,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY {_normalized_code_expr("r")}
+                        ORDER BY COALESCE(r."created_at", '') DESC, COALESCE(r."id", 0) DESC
+                    ) AS rn
+                FROM remote.{_quote_identifier(table_name)} AS r
+                WHERE {_normalized_code_expr("r")} != ''
+            ),
+            remote_winners AS (
+                SELECT *
+                FROM remote_ranked
+                WHERE rn = 1
+            )
+        """
         delete_sql = f"""
+            {remote_ranked_cte}
             DELETE FROM main.{_quote_identifier(table_name)} AS l
             WHERE EXISTS (
                 SELECT 1
-                FROM remote.{_quote_identifier(table_name)} AS r
-                WHERE COALESCE(l."query_id", '') = COALESCE(r."query_id", '')
-                  AND COALESCE(l."code", '') = COALESCE(r."code", '')
-                  AND COALESCE(r."created_at", '') > COALESCE(l."created_at", '')
+                FROM remote_winners AS rw
+                WHERE {_normalized_code_expr("l")} = rw.norm_code
+                  AND rw.created_key > COALESCE(l."created_at", '')
             )
         """
         connection.execute(delete_sql)
+        insert_values = ", ".join(
+            (
+                "UPPER(TRIM(COALESCE(rw.\"code\", '')))"
+                if col == "code"
+                else f'rw.{_quote_identifier(col)}'
+            )
+            for col in shared_columns
+        )
         sql = f"""
+            {remote_ranked_cte}
             INSERT INTO main.{_quote_identifier(table_name)} ({quoted_columns})
-            SELECT {quoted_columns}
-            FROM remote.{_quote_identifier(table_name)} AS r
+            SELECT {insert_values}
+            FROM remote_winners AS rw
             WHERE NOT EXISTS (
                 SELECT 1
                 FROM main.{_quote_identifier(table_name)} AS l
-                WHERE COALESCE(l."query_id", '') = COALESCE(r."query_id", '')
-                  AND COALESCE(l."code", '') = COALESCE(r."code", '')
+                WHERE {_normalized_code_expr("l")} = rw.norm_code
+                  AND COALESCE(l."created_at", '') >= rw.created_key
             )
         """
     elif table_name == "fundamental_snapshot":
@@ -387,15 +488,34 @@ def _candidate_codes_to_insert(
 
     if table_name == "analysis_history":
         sql = f"""
-            SELECT DISTINCT r.code
-            FROM remote.{_quote_identifier(table_name)} AS r
-            LEFT JOIN main.{_quote_identifier(table_name)} AS l
-              ON COALESCE(l."query_id", '') = COALESCE(r."query_id", '')
-             AND COALESCE(l."code", '') = COALESCE(r."code", '')
-            WHERE r.code IS NOT NULL AND TRIM(r.code) != ''
+            WITH remote_ranked AS (
+                SELECT
+                    r.code,
+                    {_normalized_code_expr("r")} AS norm_code,
+                    COALESCE(r."created_at", '') AS created_key,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY {_normalized_code_expr("r")}
+                        ORDER BY COALESCE(r."created_at", '') DESC, COALESCE(r."id", 0) DESC
+                    ) AS rn
+                FROM remote.{_quote_identifier(table_name)} AS r
+                WHERE {_normalized_code_expr("r")} != ''
+            ),
+            local_latest AS (
+                SELECT
+                    {_normalized_code_expr("l")} AS norm_code,
+                    MAX(COALESCE(l."created_at", '')) AS created_key
+                FROM main.{_quote_identifier(table_name)} AS l
+                WHERE {_normalized_code_expr("l")} != ''
+                GROUP BY {_normalized_code_expr("l")}
+            )
+            SELECT DISTINCT UPPER(TRIM(COALESCE(rr.code, '')))
+            FROM remote_ranked AS rr
+            LEFT JOIN local_latest AS ll
+              ON ll.norm_code = rr.norm_code
+            WHERE rr.rn = 1
               AND (
-                    l.id IS NULL
-                 OR COALESCE(r."created_at", '') > COALESCE(l."created_at", '')
+                    ll.norm_code IS NULL
+                 OR rr.created_key > ll.created_key
               )
         """
     elif table_name == "fundamental_snapshot":
@@ -424,7 +544,7 @@ def _candidate_codes_to_insert(
         """
 
     return {
-        str(row[0]).strip()
+        str(row[0]).strip().upper()
         for row in connection.execute(sql).fetchall()
         if row and row[0] and str(row[0]).strip()
     }
@@ -509,7 +629,7 @@ def _collect_codes_from_db(db_path: Path, table_names: Iterable[str]) -> Set[str
             ).fetchall()
             for row in rows:
                 if row and row[0]:
-                    normalized = str(row[0]).strip()
+                    normalized = str(row[0]).strip().upper()
                     if normalized:
                         codes.add(normalized)
     finally:
