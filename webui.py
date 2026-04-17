@@ -38,7 +38,7 @@ def main() -> int:
     """
     # 兼容旧版环境变量名
     host = os.getenv("WEBUI_HOST", os.getenv("API_HOST", "127.0.0.1"))
-    port = int(os.getenv("WEBUI_PORT", os.getenv("API_PORT", "8000")))
+    port = int(os.getenv("WEBUI_PORT", os.getenv("API_PORT", "8080")))
 
     print(f"正在启动 Web 服务: http://{host}:{port}")
     print(f"API 文档: http://{host}:{port}/docs")

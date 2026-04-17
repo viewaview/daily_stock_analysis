@@ -16,7 +16,7 @@ import shutil
 import sqlite3
 import subprocess
 import tempfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
@@ -29,6 +29,8 @@ DEFAULT_TIMEOUT_SECONDS = 20
 STATE_FILE_NAME = "cloud_history_sync_state.json"
 STATE_MAX_RUN_IDS = 2000
 SYNC_TABLES: Tuple[str, ...] = ("analysis_history", "news_intel", "fundamental_snapshot")
+UTC_OFFSET = 8
+SYNC_STATE_TIMEZONE = timezone(timedelta(hours=UTC_OFFSET))
 
 
 def sync_cloud_history_from_github_actions(local_db_path: Optional[str] = None) -> Dict[str, Any]:
@@ -776,6 +778,6 @@ def _save_sync_state(path: Path, state: Dict[str, Set[int]]) -> None:
     payload = {
         "processed_run_ids": processed_ids[-STATE_MAX_RUN_IDS:],
         "skipped_run_ids": skipped_ids[-STATE_MAX_RUN_IDS:],
-        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(SYNC_STATE_TIMEZONE).isoformat(),
     }
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")

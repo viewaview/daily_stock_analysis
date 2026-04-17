@@ -36,6 +36,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - [改进] 新增 `scripts/start-webui.ps1` / `scripts/start-webui.bat`，一键在 Conda 环境中启动 `webui.py` 并自动打开 `http://127.0.0.1:8080/`。
 
+- [改进] Cloud history sync 状态文件 `updated_at` 从 UTC 改为 UTC+8（`+08:00`）时间戳，便于与本地时间对齐。
+
 ## [3.12.0] - 2026-04-01
 
 ### 发布亮点
